@@ -1,0 +1,141 @@
+using System;
+using System.Collections.Generic;
+using Nosebleed.Pancake.GameConfig;
+using Nosebleed.Pancake.Models;
+using Nosebleed.Pancake.Arcana;
+using UnityEngine;
+
+namespace PancakeModLoader
+{
+    public class CustomArcanaDef
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Text { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string IconPath { get; set; } = "";
+        public string ModDirectory { get; set; } = "";
+    }
+
+    public static class ArcanaBridge
+    {
+        public static List<CustomArcanaDef> RegisteredDefs { get; } = new();
+        public static List<global::ArcanaConfig> CustomArcanaConfigs { get; } = new();
+        private static bool _arcanasCreated = false;
+
+        public static void Init(DevConsole console)
+        {
+        }
+
+        public static void RegisterArcana(CustomArcanaDef def)
+        {
+            RegisteredDefs.RemoveAll(x => x.Id == def.Id);
+            RegisteredDefs.Add(def);
+            LoaderLog.Info($"[ArcanaBridge] Registered custom arcana: {def.Id} ('{def.Name}') IconPath='{def.IconPath}'");
+        }
+
+        public static void EnsureCustomArcanasCreated()
+        {
+            if (_arcanasCreated && CustomArcanaConfigs.Count > 0) return;
+            if (RegisteredDefs.Count == 0) return;
+
+            try
+            {
+                global::ArcanaConfig template = null;
+                var objects = UnityEngine.Resources.FindObjectsOfTypeAll(Il2CppInterop.Runtime.Il2CppType.Of<global::ArcanaConfig>());
+                if (objects != null && objects.Length > 0)
+                {
+                    foreach (var obj in objects)
+                    {
+                        var c = obj?.TryCast<global::ArcanaConfig>();
+                        if (c != null && !string.IsNullOrEmpty(c.name) && !c.name.Contains("demo-mod") && !c.name.StartsWith("Test", StringComparison.OrdinalIgnoreCase))
+                        {
+                            template = c;
+                            break;
+                        }
+                    }
+                }
+
+                if (template == null)
+                {
+                    LoaderLog.Warn("[ArcanaBridge] No global::ArcanaConfig template found in memory!");
+                    return;
+                }
+
+                LoaderLog.Info($"[ArcanaBridge] Discovered template: '{template.name}'");
+
+                CustomArcanaConfigs.Clear();
+                foreach (var def in RegisteredDefs)
+                {
+                    var arcana = UnityEngine.Object.Instantiate(template);
+                    arcana.name = def.Id;
+                    arcana.hideFlags = UnityEngine.HideFlags.DontUnloadUnusedAsset | UnityEngine.HideFlags.HideAndDontSave;
+
+                    if (!string.IsNullOrEmpty(def.IconPath))
+                    {
+                        try
+                        {
+                            var customSprite = SpriteLoader.LoadSprite(def.IconPath, def.ModDirectory);
+                            if (customSprite != null)
+                            {
+                                arcana.sprite = customSprite;
+                                LoaderLog.Info($"[ArcanaBridge] Assigned custom sprite '{customSprite.name}' to arcana {arcana.name} ✓");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LoaderLog.Error($"[ArcanaBridge] Error loading sprite for arcana {arcana.name}: {ex}");
+                        }
+                    }
+
+                    CustomArcanaConfigs.Add(arcana);
+                    LoaderLog.Info($"[ArcanaBridge] Created global::ArcanaConfig {def.Id} ('{def.Name}') from template '{template.name}'");
+                }
+
+                _arcanasCreated = true;
+                LoaderLog.Info($"[ArcanaBridge] Successfully created {CustomArcanaConfigs.Count} custom arcanas in-game!");
+            }
+            catch (Exception ex)
+            {
+                LoaderLog.Error($"[ArcanaBridge] Failed to create custom arcanas: {ex}");
+            }
+        }
+
+        public static global::ArcanaConfig FindArcana(string idOrName)
+        {
+            EnsureCustomArcanasCreated();
+            foreach (var c in CustomArcanaConfigs)
+            {
+                if (c == null) continue;
+                if (string.Equals(c.name, idOrName, StringComparison.OrdinalIgnoreCase) ||
+                    c.name.EndsWith(":" + idOrName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return c;
+                }
+                var def = FindDef(c);
+                if (def != null && string.Equals(def.Name, idOrName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return c;
+                }
+            }
+            return null;
+        }
+
+        public static CustomArcanaDef FindDef(global::ArcanaConfig arcana)
+        {
+            if (arcana == null) return null;
+            string cname = arcana.name;
+            if (string.IsNullOrEmpty(cname)) return null;
+
+            string cleanName = cname.Replace("(Clone)", "").Trim();
+
+            return RegisteredDefs.Find(x => 
+                string.Equals(x.Id, cleanName, StringComparison.OrdinalIgnoreCase) || 
+                string.Equals(x.Name, cleanName, StringComparison.OrdinalIgnoreCase) ||
+                cleanName.StartsWith(x.Id, StringComparison.OrdinalIgnoreCase) || 
+                cleanName.EndsWith(x.Id, StringComparison.OrdinalIgnoreCase) || 
+                cleanName.EndsWith(":" + x.Id, StringComparison.OrdinalIgnoreCase) ||
+                cleanName.Contains(x.Id, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+}

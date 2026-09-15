@@ -1,0 +1,9 @@
+{
+  "id": "demo-mod",
+  "name": "VC Surveil Demo — Test Cards",
+  "version": "0.1.0",
+  "entry": "dist/index.js",
+  "apiVersion": "0.1.0",
+  "author": "surveil",
+  "description": "5 test cards to demo the TS modding API (attack/defense/mana/wild/character)."
+}

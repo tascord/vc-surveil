@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "composite": true,
+    "baseUrl": ".",
+    "paths": { "@vc-surveil/api": ["../../packages/api/src/index.ts"] }
+  },
+  "include": ["src/**/*"],
+  "references": [{ "path": "../../packages/api" }]
+}

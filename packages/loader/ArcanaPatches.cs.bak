@@ -1,0 +1,218 @@
+using System;
+using HarmonyLib;
+using Nosebleed.Pancake.GameConfig;
+using Nosebleed.Pancake.GameLogic;
+using Nosebleed.Pancake.Modal;
+using Nosebleed.Pancake.Models;
+using Nosebleed.Pancake.Arcana;
+using Nosebleed.Pancake.View;
+using Nosebleed.Util;
+
+namespace PancakeModLoader
+{
+    [HarmonyPatch]
+    public static class Patch_ArcanaRewardPool
+    {
+        public static System.Reflection.MethodBase TargetMethod()
+        {
+            var t = typeof(ChooseArcanaModal);
+            if (t != null)
+            {
+                var m = AccessTools.Method(t, "GetArcanaRewardPool");
+                if (m != null) return m;
+            }
+            
+            var t2 = Type.GetType("Nosebleed.Pancake.GameLogic.ArcanaManager, Pancake");
+            if (t2 != null)
+            {
+                return AccessTools.Method(t2, "GetPool");
+            }
+            return null;
+        }
+
+        public static void Postfix(Il2CppSystem.Collections.Generic.List<global::ArcanaConfig> arcanaRewardPool, Il2CppSystem.Collections.Generic.List<global::ArcanaConfig> __result)
+        {
+            try
+            {
+                var pool = arcanaRewardPool ?? __result;
+                if (pool == null) return;
+
+                ArcanaBridge.EnsureCustomArcanasCreated();
+                foreach (var arcana in ArcanaBridge.CustomArcanaConfigs)
+                {
+                    if (arcana != null && !pool.Contains(arcana))
+                    {
+                        pool.Add(arcana);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoaderLog.Error($"[ArcanaPatches] Error injecting arcanas into reward pool: {ex}");
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(PlayerModel), nameof(PlayerModel.InitDeck))]
+    public static class Patch_PlayerModel_InitArcanas
+    {
+        public static void Postfix(PlayerModel __instance)
+        {
+            try
+            {
+                ArcanaBridge.EnsureCustomArcanasCreated();
+                // Add any logic for initial custom arcanas if needed
+            }
+            catch (Exception ex)
+            {
+                LoaderLog.Error($"[ArcanaPatches] Error in InitArcanas: {ex}");
+            }
+        }
+    }
+
+    /*
+    [HarmonyPatch(typeof(RunMetaSaveData), "Init")]
+    public static class Patch_RunMetaSaveData_Init
+    {
+        public static System.Reflection.MethodBase TargetMethod()
+        {
+            var t = typeof(RunMetaSaveData);
+            return AccessTools.Method(t, "Init") ?? AccessTools.Method(t, "Initialize");
+        }
+
+        public static void Postfix()
+        {
+            try
+            {
+                ArcanaBridge.EnsureCustomArcanasCreated();
+            }
+            catch (Exception ex)
+            {
+                LoaderLog.Error($"[ArcanaPatches] Error initializing arcanas in RunMetaSaveData: {ex}");
+            }
+        }
+    }
+    */
+
+    [HarmonyPatch(typeof(global::ArcanaConfig), nameof(global::ArcanaConfig.Name), MethodType.Getter)]
+    public static class Patch_ArcanaConfig_get_Name
+    {
+        public static bool Prefix(global::ArcanaConfig __instance, ref string __result)
+        {
+            try
+            {
+                var def = ArcanaBridge.FindDef(__instance);
+                if (def != null)
+                {
+                    __result = def.Name;
+                    return false;
+                }
+            }
+            catch {}
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(global::ArcanaConfig), "GetDescription")]
+    public static class Patch_ArcanaConfig_GetDescription
+    {
+        public static System.Reflection.MethodBase TargetMethod()
+        {
+            var t = typeof(global::ArcanaConfig);
+            return AccessTools.Method(t, "GetDescription") ?? AccessTools.Method(t, "GetEffectDescription");
+        }
+
+        public static bool Prefix(global::ArcanaConfig __instance, ref string __result)
+        {
+            try
+            {
+                var def = ArcanaBridge.FindDef(__instance);
+                if (def != null)
+                {
+                    __result = def.Text;
+                    return false;
+                }
+            }
+            catch {}
+            return true;
+        }
+    }
+
+    [HarmonyPatch]
+    public static class Patch_ArcanaChoiceView_SetReward
+    {
+        public static System.Reflection.MethodBase TargetMethod()
+        {
+            var t = Type.GetType("Nosebleed.Pancake.View.ArcanaChoiceView, Pancake");
+            if (t != null)
+            {
+                return AccessTools.Method(t, "SetReward");
+            }
+            return null;
+        }
+
+        public static void Postfix(object __instance, global::ArcanaConfig arcanaReward)
+        {
+            try
+            {
+                if (__instance == null || arcanaReward == null) return;
+                var view = __instance.TryCast<UnityEngine.MonoBehaviour>();
+                if (view != null)
+                {
+                    LoaderLog.Info($"[ArcanaPatches] ArcanaChoiceView.SetReward for {arcanaReward.name} ✓");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoaderLog.Error($"[ArcanaPatches] Error in ArcanaChoiceView.SetReward postfix: {ex}");
+            }
+        }
+    }
+
+    [HarmonyPatch]
+    public static class Patch_CardView_SetArcanaConfig
+    {
+        public static System.Reflection.MethodBase TargetMethod()
+        {
+            var t = typeof(CardView);
+            if (t != null)
+            {
+                return AccessTools.Method(t, "SetArcanaConfig") ?? AccessTools.Method(t, "SetCardConfig", new Type[] { typeof(global::ArcanaConfig), typeof(bool) });
+            }
+            return null;
+        }
+
+        public static void Postfix(CardView __instance, global::ArcanaConfig arcanaConfig)
+        {
+            try
+            {
+                if (__instance == null || arcanaConfig == null) return;
+                var def = ArcanaBridge.FindDef(arcanaConfig);
+                if (def == null) return;
+
+                if (!string.IsNullOrEmpty(def.Name) && __instance._cardNameText != null)
+                {
+                    __instance._cardNameText.text = def.Name;
+                }
+                if (!string.IsNullOrEmpty(def.Text) && __instance._descriptionText != null)
+                {
+                    __instance._descriptionText.text = def.Text;
+                }
+                if (!string.IsNullOrEmpty(def.IconPath))
+                {
+                    var iconSprite = SpriteLoader.LoadSprite(def.IconPath, def.ModDirectory);
+                    if (iconSprite != null && __instance._cardImage != null)
+                    {
+                        __instance._cardImage.sprite = iconSprite;
+                        __instance._cardImage.overrideSprite = iconSprite;
+                        __instance._cardImage.enabled = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoaderLog.Error($"[ArcanaPatches] Error in CardView.SetArcanaConfig postfix: {ex}");
+            }
+        }
+    }
+}

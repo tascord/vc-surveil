@@ -1,0 +1,14 @@
+.devenv/
+.direnv/
+node_modules/
+dist/
+*.js.map
+.DS_Store
+analysis/
+.mods/
+Mods/
+*.bundle
+*.log
+packages/loader/bin/
+packages/loader/obj/
+mods/*/dist/

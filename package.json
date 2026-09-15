@@ -1,0 +1,30 @@
+{
+  "name": "vc-surveil",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TypeScript modding API for Vampire Crawlers (Pancake)",
+  "workspaces": [
+    "packages/api",
+    "packages/cli",
+    "mods/demo-mod"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:api": "npm run build -w @vc-surveil/api",
+    "build:cli": "npm run build -w @vc-surveil/surveil",
+    "build:demo": "npm run build -w demo-mod",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "dump:metadata": "python3 tools/dump-metadata.py",
+    "catalog:inspect": "python3 tools/catalog-inspect.py",
+    "publish:all": "./publish.sh",
+    "publish:dry": "./publish.sh --dry-run"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "5.6"
+  }
+}

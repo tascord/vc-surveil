@@ -1,0 +1,34 @@
+{
+  "name": "@vc-surveil/surveil",
+  "version": "0.1.0",
+  "description": "CLI for Vampire Crawlers (vc-surveil) mods — install from GitHub, manage local Mods/",
+  "type": "module",
+  "bin": {
+    "surveil": "./dist/cli.js",
+    "vc-surveil": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev": "tsc -w -p tsconfig.json"
+  },
+  "dependencies": {
+    "cac": "^6.7.14"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "vampire-crawlers",
+    "modding",
+    "cli"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.4.1"
+  }
+}
