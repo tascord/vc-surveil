@@ -81,4 +81,26 @@ surveil-publish                    # publishes @vc-surveil/api then @vc-surveil/
 ./publish.sh --api-only            # only lib
 ./publish.sh --cli-only --tag=next # only CLI with custom tag
 npm run publish:all                # via package.json scripts
+
+## Custom maps, run toggles, mod settings
+
+**Map packages** (`packages/api/src/index.ts:830 VcMaps` — `registerMap/patchMap/listMaps`):
+- `vc.maps.registerMap({ id, biomeId, tileMaterials, rooms })`: `biomeId` is vanilla texture set (`madforest|inlaidlibrary|dairyplant|gallotower|capellamagna|moongolow|tinybridge`) or custom `BiomeDef.id`; `tileMaterials` maps tile keys to material names.
+- `rooms: RoomMapDef[]`: `{ id, width, height, tiles, walls, props, lights, exits, encounterTable }`; `tiles` = `height` rows of `width` keys; `walls.tiles: {x,y,tile,walkable}[]`; `props: {id,type,x,y,destructible,hp,drops,interact}[]`; `lights: {id,x,y,radius,color,flicker}[]`; `exits: {id,x,y,toRoom,direction}[]`.
+- Offline editor: open `tools/map-editor/index.html` (no build/server) — paint tiles/walls, place props/lights/exits, Resize/Add/Duplicate, Export/Import `map.json`.
+- Example: `mods/demo-mod/assets/ember-depths-map.json` (mirrored in-code as `demo-mod:ember_depths_map`).
+
+**Run toggles** (`packages/api/src/index.ts:633 VcRunToggles` — generic per-run flags):
+- `vc.toggles.register({ id, description, defaultEnabled, conditions: { biomes, minFloor/maxFloor, requiresRelics, requiresFlags }, unlocksVia })` + `patch/list/isUnlocked/isEnabled/setEnabled/onChanged`.
+- Gating: `vc.toggles.checkLevelEnter(biomeId, floor)` re-evaluates on entry; `vc.toggles.isActiveAtRuntime(id, biomeId, floor)` = enabled+unlocked+conditions-match.
+- `inverse` is the legacy preset (`vc.inverse` mirrors toggle `inverse`; unlocked via `RelicDef.unlocksToggle`).
+- Console (`` ` ``/F1): `toggle <id> [on|off|status|toggle]` (+ `inverse ...` alias).
+
+**Mod settings tabs** (`packages/api/src/index.ts:916 VcSettings`):
+- `vc.settings.register({ id, tab, kind: "toggle"|"choice"|"slider", default, min/max|choices, label, description })`; `setSetting(id, v)` / `getSetting(id)` / `listSettings(tab?)`.
+- Demo: `demo-mod:damage_multiplier` slider 0.5–2 (`Demo` tab) + `demo-mod:hard_mode` toggle (default tab); declarative pending native menu wiring.
+
+**Controller / accessibility:**
+- In-game inverse toggle widget is keyboard-focusable (Tab/Enter/Space) with accessible name `Inverse mode toggle`; gamepad confirm flips it (`DevConsoleBehaviour.cs` overlay, no new input map).
+- Map editor is keyboard/screen-reader usable: canvas `tabindex=0` (Arrows move, Space paints), toolbar/rooms use `role=toolbar/group`, every control has `aria-label` + shortcut hints (`P` export, `N` +Room).
 ```

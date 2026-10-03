@@ -1,0 +1,141 @@
+{
+  "id": "demo-mod:ember_depths_map",
+  "biomeId": "demo-mod:ember_depths",
+  "tileMaterials": {
+    "floor": "ember_floor",
+    "wall": "ember_wall"
+  },
+  "rooms": [
+    {
+      "id": "demo-mod:ember_hall",
+      "width": 8,
+      "height": 6,
+      "tiles": [
+        "########",
+        "#......#",
+        "#......#",
+        "#......#",
+        "#......#",
+        "########"
+      ],
+      "walls": [
+        { "x": 0, "y": 0, "w": 8, "h": 1 },
+        { "x": 0, "y": 5, "w": 8, "h": 1 },
+        { "x": 0, "y": 1, "w": 1, "h": 4 },
+        { "x": 7, "y": 1, "w": 1, "h": 4 }
+      ],
+      "exits": [
+        {
+          "id": "hall_exit",
+          "x": 7,
+          "y": 3,
+          "targetRoom": "demo-mod:ember_shrine",
+          "targetExit": "shrine_exit_back"
+        }
+      ],
+      "props": [
+        {
+          "id": "crate_1",
+          "type": "crate",
+          "x": 2,
+          "y": 2,
+          "destructible": true,
+          "hp": 10
+        },
+        {
+          "id": "brazier_1",
+          "type": "brazier",
+          "x": 5,
+          "y": 2,
+          "light": { "color": "orange", "radius": 5 }
+        },
+        {
+          "id": "cart_1",
+          "type": "cart",
+          "x": 4,
+          "y": 4
+        }
+      ],
+      "lights": [
+        {
+          "id": "brazier_light",
+          "x": 5,
+          "y": 2,
+          "color": "orange",
+          "radius": 5,
+          "source": "brazier_1"
+        }
+      ]
+    },
+    {
+      "id": "demo-mod:ember_shrine",
+      "width": 6,
+      "height": 6,
+      "tiles": [
+        "######",
+        "#....#",
+        "#....#",
+        "#....#",
+        "#....#",
+        "######"
+      ],
+      "walls": [
+        { "x": 0, "y": 0, "w": 6, "h": 1 },
+        { "x": 0, "y": 5, "w": 6, "h": 1 },
+        { "x": 0, "y": 1, "w": 1, "h": 4 },
+        { "x": 5, "y": 1, "w": 1, "h": 4 }
+      ],
+      "exits": [
+        {
+          "id": "shrine_exit_back",
+          "x": 0,
+          "y": 3,
+          "targetRoom": "demo-mod:ember_hall",
+          "targetExit": "hall_exit"
+        }
+      ],
+      "props": [
+        {
+          "id": "chest_1",
+          "type": "chest",
+          "x": 2,
+          "y": 2,
+          "interactable": true,
+          "loot": { "coins": 50, "xp": 20, "cards": ["demo-mod:ember_strike"] }
+        },
+        {
+          "id": "torch_1",
+          "type": "torch",
+          "x": 1,
+          "y": 1,
+          "light": { "color": "orange", "radius": 4 }
+        },
+        {
+          "id": "torch_2",
+          "type": "torch",
+          "x": 4,
+          "y": 1,
+          "light": { "color": "orange", "radius": 4 }
+        }
+      ],
+      "lights": [
+        {
+          "id": "torch_light_1",
+          "x": 1,
+          "y": 1,
+          "color": "orange",
+          "radius": 4,
+          "source": "torch_1"
+        },
+        {
+          "id": "torch_light_2",
+          "x": 4,
+          "y": 1,
+          "color": "orange",
+          "radius": 4,
+          "source": "torch_2"
+        }
+      ]
+    }
+  ]
+}

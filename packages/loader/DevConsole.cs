@@ -83,6 +83,68 @@ namespace PancakeModLoader
                     c.WriteLine($"  {d.Id} - '{d.Name}' ({d.Mana} mana, {d.Color}, {d.Rarity}, {d.Weight} weight)");
                 }
             }));
+            Register(new ConsoleCommand("toggle", "Generic run toggle — toggle <id> [on|off|status|toggle]", "toggle <id> [on|off|status|toggle]", (args, c) =>
+            {
+                if (args.Length == 0)
+                {
+                    var ids = RunToggleBridge.ListIds();
+                    c.WriteLine(ids.Length == 0 ? "toggles: (none registered)" : $"toggles: {string.Join(", ", ids)}");
+                    c.WriteLine("usage: toggle <id> [on|off|status|toggle]");
+                    return;
+                }
+                var id = args[0];
+                var sub = args.Length > 1 ? args[1].ToLowerInvariant() : "status";
+                if (RunToggleBridge.FindDef(id) == null)
+                {
+                    c.WriteLine($"unknown toggle: {id} — known: {string.Join(", ", RunToggleBridge.ListIds())}");
+                    return;
+                }
+                switch (sub)
+                {
+                    case "on":
+                        RunToggleBridge.SetEnabled(id, true);
+                        break;
+                    case "off":
+                        RunToggleBridge.SetEnabled(id, false);
+                        break;
+                    case "toggle":
+                        RunToggleBridge.Toggle(id);
+                        break;
+                    case "status":
+                        break;
+                    default:
+                        c.WriteLine("usage: toggle <id> [on|off|status|toggle]");
+                        break;
+                }
+                var unlocked = RunToggleBridge.IsUnlocked(id);
+                var enabled = RunToggleBridge.IsEnabled(id);
+                c.WriteLine(unlocked ? $"{id}: {(enabled ? "enabled" : "disabled")} (unlocked)" : $"{id}: locked (requires relic)");
+            }));
+            Register(new ConsoleCommand("inverse", "Inverse run-mode toggle — inverse [on|off|status|toggle] (alias for toggle inverse)", "inverse [on|off|status|toggle]", (args, c) =>
+            {
+                var sub = args.Length > 0 ? args[0].ToLowerInvariant() : "status";
+                var id = "inverse";
+                switch (sub)
+                {
+                    case "on":
+                        RunToggleBridge.SetEnabled(id, true);
+                        break;
+                    case "off":
+                        RunToggleBridge.SetEnabled(id, false);
+                        break;
+                    case "toggle":
+                        RunToggleBridge.Toggle(id);
+                        break;
+                    case "status":
+                        break;
+                    default:
+                        c.WriteLine("usage: inverse [on|off|status|toggle]");
+                        break;
+                }
+                var unlocked = RunToggleBridge.IsUnlocked(id);
+                var enabled = RunToggleBridge.IsEnabled(id);
+                c.WriteLine(unlocked ? $"{id}: {(enabled ? "enabled" : "disabled")} (unlocked)" : $"{id}: locked (requires relic with unlocksToggle=inverse)");
+            }));
             /*
             Register(new ConsoleCommand("arcanas", "List registered mod arcanas", "arcanas", (args, c) =>
             {

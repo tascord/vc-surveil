@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Micro Map Editor (offline)</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;background:#111318;color:#e8eaf0;font:14px/1.4 system-ui,sans-serif;padding:12px;max-width:1100px}
+h1{font-size:18px;margin:0 0 8px}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}
+label{font-size:12px;opacity:.9}input,select{background:#1c2029;color:#fff;border:1px solid #444;border-radius:6px;padding:4px 6px;font:inherit}
+input[type=number]{width:64px}input[type=text]{min-width:0}
+#bar{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
+#bar button{background:#222835;border:1px solid #4a5160;color:#fff;border-radius:6px;padding:5px 8px;font:inherit;cursor:pointer}
+#bar button[aria-pressed=true]{background:#35507a;border-color:#7fb2ff}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,#cv:focus-visible{outline:3px solid #ffd60a;outline-offset:2px}
+main{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+#cv{background:#000;border:1px solid #555;border-radius:6px;cursor:crosshair;touch-action:none}
+aside{min-width:220px;flex:1}
+#rooms{list-style:none;margin:4px 0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:220px;overflow:auto}
+#rooms button{width:100%;text-align:left;background:#1c2029;color:#fff;border:1px solid #444;border-radius:6px;padding:4px 8px;font:inherit}
+#rooms button[aria-current=true]{border-color:#7fb2ff;background:#26314a}
+#status,#info{font-size:12px;background:#171b22;border:1px solid #333;border-radius:6px;padding:6px 8px;white-space:pre-wrap}
+kbd{background:#000;border:1px solid #666;border-bottom-width:2px;border-radius:4px;padding:0 4px;font-size:11px}
+.help{font-size:12px;opacity:.85}
+</style>
+</head>
+<body>
+<h1>Micro Map Editor (offline, no CDN)</h1>
+<div class="row" role="group" aria-label="Map metadata">
+<label>Map id <input id="mId" type="text" value="map1" aria-label="Map id"></label>
+<label>Name <input id="mName" type="text" value="Untitled" aria-label="Map name"></label>
+<label>Biome <select id="mBiome" aria-label="Biome picker"></select></label>
+</div>
+<div id="bar" role="toolbar" aria-label="Paint tools (each has a keyboard shortcut)"></div>
+<div class="row" role="group" aria-label="Brush settings">
+<label>Texture key <input id="mTex" type="text" value="floor" aria-label="Texture key per tile"></label>
+<label>Light radius <input id="mRad" type="number" min="1" max="12" value="3" aria-label="Light radius"></label>
+<label>Exit dir <select id="mDir" aria-label="Exit direction"><option>N</option><option>E</option><option>S</option><option>W</option></select></label>
+<label>W <input id="mW" type="number" min="1" max="64" value="16" aria-label="Room width"></label>
+<label>H <input id="mH" type="number" min="1" max="64" value="12" aria-label="Room height"></label>
+<button id="bResize" aria-label="Apply room size">Resize</button>
+</div>
+<div class="row" role="group" aria-label="Rooms and file">
+<button id="bAdd" aria-label="Add room (key N)">+Room <kbd>N</kbd></button>
+<button id="bDup" aria-label="Duplicate current room">Duplicate</button>
+<button id="bDel" aria-label="Delete current room">Delete</button>
+<button id="bExp" aria-label="Export map.json download">Export <kbd>P</kbd></button>
+<button id="bImp" aria-label="Import map.json file">Import</button>
+<input id="fImp" type="file" accept=".json,application/json" hidden aria-label="Choose map.json to import">
+</div>
+<main>
+<canvas id="cv" tabindex="0" role="application" aria-label="Tile grid canvas. Arrow keys move cursor, Space paints."></canvas>
+<aside>
+<h2 style="font-size:13px;margin:0">Rooms (<span id="rCount">0</span>)</h2>
+<ol id="rooms" aria-label="Room list"></ol>
+<h2 style="font-size:13px;margin:8px 0 0">Cell inspector</h2>
+<div id="info" role="status">—</div>
+<p class="help">Keys: <kbd>←↑↓→</kbd> cursor · <kbd>Space</kbd>/<kbd>Enter</kbd> paint ·
+<kbd>F</kbd>loor <kbd>W</kbd>all <kbd>E</kbd>xit-tile · <kbd>C</kbd>rate <kbd>V</kbd>ase <kbd>O</kbd> coffin
+<kbd>H</kbd> chest <kbd>S</kbd>hop <kbd>B</kbd>razier <kbd>T</kbd>orch <kbd>K</kbd> cart <kbd>M</kbd> minecart ·
+<kbd>L</kbd>ight <kbd>X</kbd> exit <kbd>R</kbd> eraser · <kbd>D</kbd> cycle exit dir · <kbd>[</kbd>/<kbd>]</kbd> rooms ·
+<kbd>N</kbd> new room <kbd>P</kbd> export. Click/drag also paints.</p>
+</aside>
+</main>
+<div id="status" role="status" aria-live="polite">Ready.</div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const BIOMES=["madforest","inlaidlibrary","dairyplant","gallowtower","capellamagna","moongolow","tinybridge"];
+const TINT={madforest:"#233826",inlaidlibrary:"#2c2340",dairyplant:"#3a3423",gallowtower:"#33272a",capellamagna:"#25324a",moongolow:"#1f3a3a",tinybridge:"#2e2e38"};
+const KIND=["floor","wall","exit"],KF={floor:0,wall:1,exit:2};
+const GLYPH={crate:"C",vase:"V",coffin:"O",chest:"H",shop:"S",brazier:"B",torch:"T",cart:"K",minecart:"M"};
+const ARROW={N:"▲",S:"▼",E:"▶",W:"◀"};
+const TOOLS=[
+{k:"F",id:"floor",mode:"tile",v:0,label:"Floor tile"},{k:"W",id:"wall",mode:"tile",v:1,label:"Wall tile"},
+{k:"E",id:"exitTile",mode:"tile",v:2,label:"Exit tile"},{k:"C",id:"crate",mode:"prop",label:"Prop crate"},
+{k:"V",id:"vase",mode:"prop",label:"Prop vase"},{k:"O",id:"coffin",mode:"prop",label:"Prop coffin"},
+{k:"H",id:"chest",mode:"prop",label:"Prop chest"},{k:"S",id:"shop",mode:"prop",label:"Prop shop"},
+{k:"B",id:"brazier",mode:"prop",label:"Prop brazier"},{k:"T",id:"torch",mode:"prop",label:"Prop torch"},
+{k:"K",id:"cart",mode:"prop",label:"Prop cart"},{k:"M",id:"minecart",mode:"prop",label:"Prop minecart"},
+{k:"L",id:"light",mode:"light",label:"Light source"},{k:"X",id:"exit",mode:"exit",label:"Exit with direction"},
+{k:"R",id:"eraser",mode:"erase",label:"Eraser"}];
+const TS=26;
+let pkg=null,ri=0,tool=TOOLS[0],cursor={x:0,y:0},down=false;
+const cv=$("cv"),ctx=cv.getContext("2d");
+function newRoom(id,w,h){const t=[];for(let i=0;i<w*h;i++)t.push({t:0,tex:"floor"});return{id,width:w,height:h,tiles:t,props:[],lights:[],exits:[]};}
+function room(){return pkg.rooms[ri];}
+function idx(r,x,y){return y*r.width+x;}
+function inB(r,x,y){return x>=0&&y>=0&&x<r.width&&y<r.height;}
+function say(m){$("status").textContent=m;}
+function normTile(e){ // accept number|string|object on import (old flat object-tile format)
+if(typeof e==="number")return{t:e===1?1:e===2?2:0,tex:KIND[e]||"floor"};
+if(typeof e==="string"){if(e==="#")return{t:1,tex:"wall"};if(e==="E")return{t:2,tex:"exit"};if(e===".")return{t:0,tex:"floor"};const p=e.split(":");if(p.length>1&&KF[p[0]]!==undefined)return{t:KF[p[0]],tex:p[1]||p[0]};return{t:KF[e]!==undefined?KF[e]:0,tex:e};}
+if(e&&typeof e==="object"){const k=e.t!==undefined?e.t:(KF[e.tile]!==undefined?KF[e.tile]:(KF[e.kind]!==undefined?KF[e.kind]:0));return{t:k===1?1:k===2?2:0,tex:String(e.tex||e.key||KIND[k]||"floor")};}
+return{t:0,tex:"floor"};}
+function charToTile(ch){if(ch==="#")return{t:1,tex:"wall"};if(ch==="E")return{t:2,tex:"exit"};return{t:0,tex:"floor"};}
+function isStringRowFormat(a,w,h){if(!Array.isArray(a)||a.length!==h||!a.length)return false;for(let i=0;i<a.length;i++){if(typeof a[i]!=="string"||a[i].length!==w)return false;}return true;}
+function parseTiles(input,w,h){const total=w*h;
+if(isStringRowFormat(input,w,h)){const out=[];for(let y=0;y<h;y++){const row=input[y]||"";for(let x=0;x<w;x++)out.push(charToTile(row[x]));}return out;}
+if(Array.isArray(input)&&input.length===h&&input.length>0&&input.every(e=>typeof e==="string")){const rowLen=input[0].length;if(rowLen>0&&input.every(e=>e.length===rowLen)){const out=[];for(let y=0;y<h;y++){const row=input[y]||"";for(let x=0;x<w;x++){const ch=x<row.length?row[x]:".";out.push(charToTile(ch));}}return out;}}
+const flat=(Array.isArray(input)?input:[]).slice(0,total).map(normTile);while(flat.length<total)flat.push({t:0,tex:"floor"});return flat;}
+function normProp(p){if(!p||typeof p!=="object")return null;const kind=String(p.kind||p.type||"");if(!GLYPH[kind])return null;const o={x:p.x|0,y:p.y|0,kind};if(p.id!==undefined)o.id=String(p.id);if(p.destructible!==undefined)o.destructible=!!p.destructible;if(p.hp!==undefined)o.hp=p.hp|0;if(Array.isArray(p.drops))o.drops=p.drops.map(String);if(p.interact!==undefined)o.interact=String(p.interact);else if(p.interactable) o.interact="interact";return o;}
+function normLight(l){if(!l||typeof l!=="object")return null;const o={x:l.x|0,y:l.y|0,radius:Math.max(1,Math.min(12,l.radius|0||3))};if(l.id!==undefined)o.id=String(l.id);if(l.color!==undefined)o.color=String(l.color);if(l.flicker!==undefined)o.flicker=!!l.flicker;return o;}
+function normExit(e){if(!e||typeof e!=="object")return null;const dir=String(e.dir||e.direction||e.targetExit||e.toExit||"N");if(!ARROW[dir])return null;const o={x:e.x|0,y:e.y|0,dir};if(e.id!==undefined)o.id=String(e.id);const toRoom=e.toRoom||e.targetRoom||"";if(toRoom)o.toRoom=String(toRoom);return o;}
+function normMaterials(tm){const m={};if(tm&&typeof tm==="object"&&!Array.isArray(tm)){for(const k in tm){const v=tm[k];if(typeof v==="string"){if(v)m[k]=v;}else if(v&&typeof v==="object"&&typeof v.tile==="string"&&v.tile){m[k]=v.tile;}}}return m;}
+function normRoom(r){r=r||{};const w=Math.max(1,Math.min(64,r.width|0||8)),h=Math.max(1,Math.min(64,r.height|0||8));
+const tiles=parseTiles(r.tiles,w,h);
+const P=Array.isArray(r.props)?r.props.map(normProp).filter(Boolean):[],
+L=Array.isArray(r.lights)?r.lights.map(normLight).filter(Boolean):[],
+X=Array.isArray(r.exits)?r.exits.map(normExit).filter(Boolean):[],
+kept={};X.forEach(e=>{kept[e.x+","+e.y]=1;});tiles.forEach((c,i)=>{if(c.t===2&&!kept[(i%w)+","+((i/w)|0)])X.push({x:i%w,y:(i/w)|0,dir:"N"});});
+return{id:String(r.id||"room1"),width:w,height:h,tiles,props:P,lights:L,exits:X};}
+function blankPkg(){return{id:"map1",name:"Untitled",biomeId:"madforest",rooms:[newRoom("room1",16,12)],tileMaterials:{}};}
+// toolbar
+const bar=$("bar");
+TOOLS.forEach(t=>{const b=document.createElement("button");b.textContent=t.label.replace(/^(Prop |Light |Exit tile)/,"")+" ("+t.k+")";b.setAttribute("aria-label",t.label+", shortcut key "+t.k);b.setAttribute("aria-pressed",t===tool?"true":"false");b.dataset.k=t.k;b.title=t.label+" ["+t.k+"]";b.addEventListener("click",()=>setTool(t.k));bar.appendChild(b);t._btn=b;});
+function setTool(k){const t=TOOLS.find(t=>t.k===k.toUpperCase());if(!t)return;tool=t;TOOLS.forEach(u=>u._btn.setAttribute("aria-pressed",u===t?"true":"false"));say("Tool: "+t.label+".");info();}
+// biome picker
+BIOMES.forEach(b=>{const o=document.createElement("option");o.value=b;o.textContent=b;$("mBiome").appendChild(o);});
+// rooms list
+function renderRooms(){$("rCount").textContent=pkg.rooms.length;const ol=$("rooms");ol.innerHTML="";
+pkg.rooms.forEach((r,i)=>{const li=document.createElement("li");const b=document.createElement("button");b.textContent=(i+1)+". "+r.id+" ("+r.width+"×"+r.height+")";b.setAttribute("aria-label","Edit room "+r.id);if(i===ri)b.setAttribute("aria-current","true");b.addEventListener("click",()=>{ri=i;syncRoomInputs();draw();renderRooms();info();});li.appendChild(b);ol.appendChild(li);});}
+function syncRoomInputs(){const r=room();$("mW").value=r.width;$("mH").value=r.height;}
+function syncMeta(){$("mId").value=pkg.id;$("mName").value=pkg.name;$("mBiome").value=pkg.biomeId;}
+function upsertExit(r,x,y,dir){const e=r.exits.find(e=>e.x===x&&e.y===y);if(e)e.dir=dir;else r.exits.push({x,y,dir});}
+function paint(x,y){const r=room();if(!inB(r,x,y))return;const i=idx(r,x,y);
+const at=(a)=>a.findIndex(o=>o.x===x&&o.y===y);
+if(tool.mode==="tile"){let tx=$("mTex").value.trim()||KIND[tool.v];r.tiles[i]={t:tool.v,tex:tx};
+if(tool.v===2)upsertExit(r,x,y,$("mDir").value);else r.exits=r.exits.filter(e=>!(e.x===x&&e.y===y));}
+else if(tool.mode==="prop"){let j=at(r.props);if(j>=0)r.props.splice(j,1);r.props.push({x,y,kind:tool.id});}
+else if(tool.mode==="light"){let j=at(r.lights);if(j>=0)r.lights.splice(j,1);r.lights.push({x,y,radius:Math.max(1,Math.min(12,+$("mRad").value||3))});}
+else if(tool.mode==="exit"){r.tiles[i]={t:2,tex:$("mTex").value.trim()||"exit"};upsertExit(r,x,y,$("mDir").value);}
+else{let j=at(r.props);if(j>=0)r.props.splice(j,1);j=at(r.lights);if(j>=0)r.lights.splice(j,1);r.exits=r.exits.filter(e=>!(e.x===x&&e.y===y));r.tiles[i]={t:0,tex:"floor"};}
+draw();info();}
+function draw(){const r=room();cv.width=r.width*TS;cv.height=r.height*TS;const base=TINT[pkg.biomeId]||"#222";
+for(let y=0;y<r.height;y++)for(let x=0;x<r.width;x++){const c=r.tiles[idx(r,x,y)];
+ctx.fillStyle=c.t===1?"#6b7280":c.t===2?"#166534":base;ctx.fillRect(x*TS,y*TS,TS,TS);
+ctx.strokeStyle="#00000088";ctx.strokeRect(x*TS+.5,y*TS+.5,TS-1,TS-1);
+if(c.tex&&c.tex!==KIND[c.t]){ctx.fillStyle="#9adcff";ctx.font="9px sans-serif";ctx.fillText(c.tex.slice(0,4),x*TS+3,y*TS+11);}}
+r.lights.forEach(l=>{ctx.fillStyle="rgba(255,220,80,.20)";ctx.beginPath();ctx.arc(l.x*TS+TS/2,l.y*TS+TS/2,l.radius*TS/2,0,7);ctx.fill();ctx.fillStyle="#ffe066";ctx.font="bold 11px sans-serif";ctx.fillText("✦"+l.radius,l.x*TS+4,l.y*TS+13);});
+ctx.font="bold 13px sans-serif";
+r.props.forEach(p=>{ctx.fillStyle="#ffb347";ctx.fillText(GLYPH[p.kind]||"?",p.x*TS+8,p.y*TS+17);});
+r.exits.forEach(e=>{ctx.fillStyle="#4ade80";ctx.strokeStyle="#4ade80";ctx.strokeRect(e.x*TS+1.5,e.y*TS+1.5,TS-3,TS-3);ctx.fillText(ARROW[e.dir]||"?",e.x*TS+7,e.y*TS+18);});
+ctx.lineWidth=cv===document.activeElement?3:2;ctx.strokeStyle="#ffd60a";ctx.strokeRect(cursor.x*TS+1,cursor.y*TS+1,TS-2,TS-2);
+cv.setAttribute("aria-label","Room "+r.id+", "+r.width+" by "+r.height+". Cursor at "+cursor.x+", "+cursor.y+". Tool "+tool.label+".");}
+function info(){const r=room();if(!r)return;const c=r.tiles[idx(r,cursor.x,cursor.y)]||{t:0,tex:"?"};
+const p=r.props.find(o=>o.x===cursor.x&&o.y===cursor.y),l=r.lights.find(o=>o.x===cursor.x&&o.y===cursor.y),e=r.exits.find(o=>o.x===cursor.x&&o.y===cursor.y);
+$("info").textContent="room "+r.id+" ["+cursor.x+","+cursor.y+"] tile="+KIND[c.t]+" tex="+c.tex+(p?" prop="+p.kind:"")+(l?" light r="+l.radius:"")+(e?" exit→"+e.dir:"")+"\ntool="+tool.label+" ("+tool.k+") dir="+$("mDir").value;}
+function cellEv(ev){const b=cv.getBoundingClientRect();return[Math.floor((ev.clientX-b.left)/b.width*room().width),Math.floor((ev.clientY-b.top)/b.height*room().height)];}
+cv.addEventListener("pointerdown",ev=>{down=true;cv.focus();const[x,y]=cellEv(ev);cursor={x:Math.max(0,Math.min(room().width-1,x)),y:Math.max(0,Math.min(room().height-1,y))};paint(cursor.x,cursor.y);cv.setPointerCapture(ev.pointerId);});
+cv.addEventListener("pointermove",ev=>{if(!down)return;const[x,y]=cellEv(ev);if(inB(room(),x,y)){cursor={x,y};if(tool.mode==="tile"||tool.mode==="erase")paint(x,y);else draw();info();}});
+addEventListener("pointerup",()=>down=false);
+cv.addEventListener("focus",draw);cv.addEventListener("blur",draw);
+document.addEventListener("keydown",ev=>{const t=ev.target;if(t&&(t.tagName==="INPUT"||t.tagName==="SELECT"||t.tagName==="TEXTAREA"))return;
+const k=ev.key;
+if(k.startsWith("Arrow")){ev.preventDefault();const r=room();cursor.x=Math.max(0,Math.min(r.width-1,cursor.x+(k==="ArrowRight"?1:k==="ArrowLeft"?-1:0)));cursor.y=Math.max(0,Math.min(r.height-1,cursor.y+(k==="ArrowDown"?1:k==="ArrowUp"?-1:0)));draw();info();return;}
+if(k===" "||k==="Enter"){if(document.activeElement===cv){ev.preventDefault();paint(cursor.x,cursor.y);}return;}
+const U=k.toUpperCase();
+if(TOOLS.some(t=>t.k===U)){setTool(U);return;}
+if(U==="D"){const d=$("mDir");d.selectedIndex=(d.selectedIndex+1)%4;info();say("Exit dir "+d.value);return;}
+if(k==="["||k==="]"){ri=(ri+(k==="]"?1:pkg.rooms.length-1))%pkg.rooms.length;cursor={x:0,y:0};syncRoomInputs();draw();renderRooms();info();return;}
+if(U==="N"){addRoom();return;}
+if(U==="P"){ev.preventDefault();doExport();}});
+function addRoom(){const n=pkg.rooms.length+1;pkg.rooms.push(newRoom("room"+n,+$("mW").value||16,+$("mH").value||12));ri=pkg.rooms.length-1;cursor={x:0,y:0};syncRoomInputs();draw();renderRooms();info();say("Added room "+room().id);}
+$("bAdd").addEventListener("click",addRoom);
+$("bDup").addEventListener("click",()=>{const c=JSON.parse(JSON.stringify(room()));c.id=c.id+"_copy";pkg.rooms.splice(ri+1,0,c);ri++;draw();renderRooms();info();});
+$("bDel").addEventListener("click",()=>{if(pkg.rooms.length<=1){say("Cannot delete last room.");return;}pkg.rooms.splice(ri,1);ri=Math.max(0,ri-1);syncRoomInputs();draw();renderRooms();info();});
+$("bResize").addEventListener("click",()=>{const r=room(),w=Math.max(1,Math.min(64,+$("mW").value||r.width)),h=Math.max(1,Math.min(64,+$("mH").value||r.height)),nt=[];
+for(let y=0;y<h;y++)for(let x=0;x<w;x++)nt.push(x<r.width&&y<r.height?r.tiles[idx(r,x,y)]:{t:0,tex:"floor"});
+r.width=w;r.height=h;r.tiles=nt;r.props=r.props.filter(p=>inB(r,p.x,p.y));r.lights=r.lights.filter(p=>inB(r,p.x,p.y));r.exits=r.exits.filter(p=>inB(r,p.x,p.y));
+cursor={x:0,y:0};draw();renderRooms();info();say("Resized to "+w+"x"+h);});
+function exportTiles(r){const rows=[];for(let y=0;y<r.height;y++){let s="";for(let x=0;x<r.width;x++){const c=r.tiles[idx(r,x,y)];s+=c.t===1?"#":c.t===2?"E":".";}rows.push(s);}return rows;}
+function exportWalls(r){const tiles=[];for(let y=0;y<r.height;y++)for(let x=0;x<r.width;x++){const c=r.tiles[idx(r,x,y)];if(c.t===1)tiles.push({x,y,tile:c.tex||"wall",walkable:false});}let mat="wall";const counts={};tiles.forEach(t=>{counts[t.tile]=(counts[t.tile]||0)+1;});let best=0;for(const k in counts){if(counts[k]>best){best=counts[k];mat=k;}}return{tiles,material:mat};}
+function uniqId(base,seen){if(!seen[base]){seen[base]=1;return base;}let n=seen[base];seen[base]++;return base+"_"+n;}
+function exportProps(r){const seen={};return r.props.map(p=>{const kind=p.kind||p.type||"crate";const base=String(p.id||(kind+"_"+(p.x|0)+"_"+(p.y|0)));const destructible=p.destructible!==undefined?!!p.destructible:(kind==="crate"||kind==="vase"||kind==="coffin"||kind==="chest");const hp=p.hp!==undefined?(p.hp|0):(destructible?10:0);const drops=Array.isArray(p.drops)?p.drops.map(String):[];const interact=p.interact!==undefined?String(p.interact):((kind==="chest"||kind==="shop")?"interact":"");return{id:uniqId(base,seen),type:kind,x:p.x|0,y:p.y|0,destructible,hp,drops,interact};});}
+function exportLights(r){const seen={};return r.lights.map(l=>{const base=String(l.id||("light_"+(l.x|0)+"_"+(l.y|0)));return{id:uniqId(base,seen),x:l.x|0,y:l.y|0,radius:Math.max(1,Math.min(12,l.radius|0||3)),color:String(l.color||"white")};});}
+function exportExits(r){const seen={};return r.exits.map(e=>{const base=String(e.id||("exit_"+(e.x|0)+"_"+(e.y|0)));return{id:uniqId(base,seen),x:e.x|0,y:e.y|0,toRoom:String(e.toRoom||""),direction:e.dir};});}
+function exportRoom(r){return{id:r.id,width:r.width,height:r.height,tiles:exportTiles(r),walls:exportWalls(r),props:exportProps(r),lights:exportLights(r),exits:exportExits(r)};}
+function collectMaterials(){const m=normMaterials(pkg.tileMaterials);pkg.rooms.forEach(r=>r.tiles.forEach(c=>{if(c.tex&&!m[c.tex])m[c.tex]=c.tex;}));return m;}
+function doExport(){pkg.id=$("mId").value.trim()||"map1";pkg.name=$("mName").value.trim()||pkg.id;pkg.biomeId=$("mBiome").value;
+const out={id:pkg.id,name:pkg.name,biomeId:pkg.biomeId,rooms:pkg.rooms.map(exportRoom),tileMaterials:collectMaterials()};
+const blob=new Blob([JSON.stringify(out,null,2)],{type:"application/json"});const a=document.createElement("a");
+a.href=URL.createObjectURL(blob);a.download=(pkg.id||"map")+".json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);say("Exported "+a.download+" ("+pkg.rooms.length+" rooms).");}
+$("bExp").addEventListener("click",doExport);
+$("bImp").addEventListener("click",()=>$("fImp").click());
+$("fImp").addEventListener("change",ev=>{const f=ev.target.files[0];if(!f)return;const rd=new FileReader();
+rd.onload=()=>{try{const o=JSON.parse(rd.result);if(!o||!Array.isArray(o.rooms))throw new Error("rooms[] missing");
+pkg={id:String(o.id||"map1"),name:String(o.name||o.id||"map1"),biomeId:BIOMES.includes(o.biomeId)?o.biomeId:"madforest",rooms:o.rooms.map(normRoom),tileMaterials:normMaterials(o.tileMaterials)};
+if(!pkg.rooms.length)pkg.rooms.push(newRoom("room1",16,12));ri=0;cursor={x:0,y:0};syncMeta();syncRoomInputs();draw();renderRooms();info();say("Imported "+f.name+" ("+pkg.rooms.length+" rooms).");}
+catch(e){say("Import failed: "+e.message);}};rd.readAsText(f);ev.target.value="";});
+["mTex","mRad","mDir"].forEach(id=>$(id).addEventListener("input",info));
+pkg=blankPkg();syncMeta();syncRoomInputs();renderRooms();draw();info();
+</script>
+</body>
+</html>

@@ -42,7 +42,17 @@ namespace PancakeModLoader
         public void Update()
         {
             CheckToggleInput();
+            CheckInverseToggleInput();
         }
+
+        // ── Inverse toggle widget (M7-T2): controller-navigable button with accessible name,
+        // reuses DevConsole overlay patterns (GUI.depth, Box/Label/Button with Rect, Screen metrics).
+        // Accessible name/label for keyboard focus + screen readers (IMGUI focusable via Tab).
+        public const string InverseControlName = "Inverse mode toggle";
+        // Bindable gamepad confirm button (legacy KeyCode; remap by assigning this field).
+        // New Input System Gamepad.buttonSouth is always also checked (standard confirm).
+        public static KeyCode InverseGamepadConfirmKey = KeyCode.Joystick1Button0;
+        public static bool EnableInverseGamepadShortcut = true;
 
         private static bool _loggedKeyboard = false;
 
@@ -122,6 +132,86 @@ namespace PancakeModLoader
             catch { }
         }
 
+        public static bool WasInverseConfirmPressed()
+        {
+            // New Input System gamepad confirm (standard controller-confirm, bindable via Input System bindings).
+            try
+            {
+                var pad = Gamepad.current;
+                if (pad != null && pad.buttonSouth != null && pad.buttonSouth.wasPressedThisFrame)
+                    return true;
+            }
+            catch { }
+            // Legacy fallback, bindable via InverseGamepadConfirmKey.
+            try
+            {
+                if (Input.GetKeyDown(InverseGamepadConfirmKey) || Input.GetKeyDown(KeyCode.JoystickButton0))
+                    return true;
+            }
+            catch { }
+            return false;
+        }
+
+        public static void CheckInverseToggleInput()
+        {
+            if (!EnableInverseGamepadShortcut) return;
+            try
+            {
+                if (BepInExPlugin.Instance?.Console?.IsOpen != true) return;
+                if (!InverseToggle.IsUnlocked()) return;
+                if (WasInverseConfirmPressed())
+                {
+                    InverseToggle.Toggle();
+                    LoaderLog.Info($"[DevConsole] Inverse toggled via gamepad ({InverseToggle.StatusString()})");
+                }
+            }
+            catch { }
+        }
+
+        private static void DrawInverseToggleWidget()
+        {
+            try
+            {
+                // Reuse DevConsole overlay patterns: centered bar below console panel, Box/Label/Button with Rect.
+                var width = System.Math.Min(800f, Screen.width - 32f);
+                var height = System.Math.Min(480f, Screen.height - 80f);
+                var panelX = (Screen.width - width) / 2f;
+                var panelY = 40f;
+                float barY = panelY + height + 6f;
+                if (barY + 30f > Screen.height - 4f) barY = System.Math.Max(4f, Screen.height - 34f);
+                var barRect = new Rect(panelX, barY, width, 30f);
+
+                GUI.Box(barRect, "");
+                // Accessible visible label (screen-reader / keyboard context).
+                GUI.Label(new Rect(barRect.x + 10f, barRect.y + 5f, 160f, 20f), InverseControlName);
+
+                bool unlocked = InverseToggle.IsUnlocked();
+                string status = InverseToggle.StatusString();
+
+                // Keyboard-focusable: SetNextControlName gives Tab focus + accessible name.
+                // Standard IMGUI focus means Enter/Space (keyboard) or controller-confirm (submit)
+                // activates the focused button without extra code.
+                GUI.SetNextControlName(InverseControlName);
+                bool prevEnabled = GUI.enabled;
+                // Only enabled/clickable when unlocked (grays out + ignores clicks while locked).
+                GUI.enabled = unlocked;
+                var content = new GUIContent(status, InverseControlName);
+                if (GUI.Button(new Rect(barRect.x + 180f, barRect.y + 3f, barRect.width - 190f, 24f), content))
+                {
+                    if (unlocked)
+                    {
+                        InverseToggle.Toggle();
+                        LoaderLog.Info($"[DevConsole] Inverse toggled via overlay button ({InverseToggle.StatusString()})");
+                    }
+                }
+                GUI.enabled = prevEnabled;
+            }
+            catch (Exception ex)
+            {
+                LoaderLog.Warn($"[DevConsole] Inverse widget error: {ex.Message}");
+            }
+        }
+
         public void OnGUI()
         {
             try
@@ -158,6 +248,11 @@ namespace PancakeModLoader
                 {
                     return;
                 }
+
+                // Inverse toggle widget drawn BEFORE console so IMGUI keyboard focus
+                // (Tab/Enter/Space) reaches the button before DevConsole consumes all keys.
+                // Rect is below the console panel (no visual overlap), reusing overlay patterns.
+                DrawInverseToggleWidget();
 
                 BepInExPlugin.Instance?.Console?.OnGUI();
             }
